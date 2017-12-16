@@ -16,6 +16,7 @@ EST 框架全称 Entity State Transition ,是一个基于 ECS 模型的 C++17 �
     * [Transition](#Transition)
 * [为什么使用EST](#为什么使用EST)
 * [简单的示例](#简单示例)
+* [TODO](#TODO)
 ***
 ### 前置需求
 * M$VC
@@ -59,7 +60,6 @@ EST 框架全称 Entity State Transition ,是一个基于 ECS 模型的 C++17 �
 在抛开面向对象后,数据和逻辑分离了,逻辑和逻辑分离了,甚至数据和其他数据分离了,只有逻辑依附在数据上.(当然这种情况有点太夸张了)
 
 所以在数据驱动编程中,一切都是暴露出来的.而控制流和状态的暴露将带来巨大的灵活性.(在[为什么使用EST](#为什么使用EST)展示)
-
 ##### 这和EST有什么关系
 EST 是一个抽象状态机, 是数据驱动编程的一个实践.
 
@@ -145,7 +145,7 @@ manager.create_entity([&manager](auto& e) //创建一个实体
 * 创建 Entity
 * 杀死 Entity  
 
-需要注意的是**杀死和创建Entity不会立即生效!** 要使得他们生效,你需要(关于这个设计还有待商议)  
+需要注意的是**杀死和创建Entity不会立即生效!** 要使得他们生效,你需要  
 ```C++
 manager.tick(); //进入下一帧,使得所有修改生效
 ```
@@ -184,11 +184,13 @@ manager.transit(whos_in);
 可以在转移函数指定 Tag
 ```C++
 manager.transit<boy>([](name& n) { std::cout << n << " is a boy;\n"; }); //额外指定标签
+manager.transit([](name& n, MPL::type_t<girl>) { std::cout << n << " is a girl;\n"; }); //也可以这么指定,但是不推荐
 ```
 ***
 ### Transition 
 Transition 模块对零散的转移函数进行高效的管理  
-**有什么不同?**  
+
+**首先需要注意**  
 你需要定义状态转移函数的输入(通过参数类型隐式的)和输出(通过返回类型显式的)
 ```C++
 auto move_entity = [](CLocation& loc, CVelocity& vel)
@@ -204,8 +206,7 @@ template<typename... Ts>
 MPL::typelist<Ts...> output{};
 #define out(...) return output<__VA_ARGS__>
 ```
-
-**如何构建?**
+**如何构建一个转移?**
 ```C++
 using Game = EntityState::StateManager<CVelocity, CLocation, CAppearance, CLifeTime, CSpawner>;
 Game game;
@@ -217,11 +218,11 @@ Transition::Function<Game> transition;
 定义世界的转移函数
 然后构建管线,制定逻辑的顺序
 ```C++
-transition >> draw_frame;
+transition >> draw_frame >> ...;
 ```
 也可以用 combine 函数
 ```C++
-transition.combine(draw_frame);
+transition.combine(draw_frame).combine<...>(...)...;
 ```
 
 **如何使用?**
@@ -289,13 +290,13 @@ struct Dependent
 {
     ...
     auto life_time() //貌似没办法写成变量
-	{
-		return [this](CLifeTime& life, Entity& e)
-		{
-			if (--life.n < 0) game.kill_entity(e);
-			out(CLifeTime);
-		};
-	}
+    {
+    	return [this](CLifeTime& life, Entity& e)
+    	{
+    	    if (--life.n < 0) game.kill_entity(e);
+            out(CLifeTime);
+        };
+    }
     ...
 };
 ```
@@ -307,18 +308,18 @@ struct Dependent
 {
     ...
     auto spawn()
-	{
-		return [this](CSpawner& sp, CLocation& loc)
-		{
-			game.create_entity([&](Entity& e)
-			{
-				game.add<CLifeTime>(e, sp.life);
-				game.add<CLocation>(e, loc.x, loc.y);
-				game.add<CAppearance>(e, '*');
-			});
-			out(CLifeTime, CLocation, CAppearance);
-		};
-	}
+    {
+	    return [this](CSpawner& sp, CLocation& loc)
+	    {
+	    	game.create_entity([&](Entity& e)
+	    	{
+	    		game.add<CLifeTime>(e, sp.life);
+	    		game.add<CLocation>(e, loc.x, loc.y);
+	    		game.add<CAppearance>(e, '*');
+	    	});
+	    	out(CLifeTime, CLocation, CAppearance);
+	    };
+    }
     ...
 };
 ```
@@ -379,6 +380,13 @@ while (1) //帧循环
         * 如加上 CLocation 和 CVelocity 就可以根据输入移动(这里获得了两个行为)
     * 而实体的类型又是动态的,这意味着我们可以 **随时改变一个对象的行为**
         * 如加上一个 CBleed 持续掉血
+        * 如加上一个 CSpeedUp 移速翻倍
+        * 如加上一个 CLifeTime 自动消失
 
 从上面可以看出来EST有着难以想象的灵活性与高性能  
 **你若倒戈卸甲,以礼来降,仍不失封侯之位,国安民乐,岂不美哉?**
+
+### TODO
+* 考虑是否应该延后 Entity 的销毁和创建
+    * 考虑时候应该一起延后创建 Entity 初始化时创建的 State
+* 考虑是否应该延后 Component 的销毁和创建
