@@ -8,12 +8,13 @@ EST 框架全称 Entity State Transition ,是一个基于 ECS 模型的 C++17 �
 * [基本思想](#基本思想)
     * [引入数据驱动编程](#引入数据驱动编程)
     * [什么是数据驱动编程](#什么是数据驱动编程)
-    * [这为带来了什么](#这为我们带来了什么)
+    * [这带来了什么](#这带来了什么)
     * [这和EST有什么关系](#这和EST有什么关系)
-    * [EST怎么组成](#EST怎么组成)
 * [如何使用EST](#如何使用)
+    * [EST怎么组成](#EST怎么组成)
     * [EntityState](#EntityState)
     * [Transition](#Transition)
+* [为什么使用EST](#为什么使用EST)
 * [简单的示例](#简单示例)
 ***
 ### 前置需求
@@ -46,22 +47,25 @@ EST 框架全称 Entity State Transition ,是一个基于 ECS 模型的 C++17 �
 ### 基本思想
 
 ##### 引入数据驱动编程
-对于游戏的上层,也就是游戏玩法逻辑框架层(gameplay framework),结构是非常的**多变**的
+对于游戏的上层,也就是游戏玩法逻辑框架层(gameplay framework),结构是非常的**易变**的
 ,所以人们经常用一些工具来帮忙进行抽象,比如状态机,AI行为树
-,实际上,这种工具都是一种编程模式的实例:**数据驱动编程**.
+,实际上,这种工具都是一种编程模式的实践:**数据驱动编程**.
 
 ##### 什么是数据驱动编程
 简单来说数据驱动编程就是:程序的逻辑并不是通过硬编码实现的而是由数据和数据结构来决定的,从而在需要改变的程序逻辑的时候只需要改变数据和数据结构而不是代码.
 
 对于数据驱动编程而且,考虑的是尽可能的少编写固定代码.这是 UNIX 哲学之一「提供机制，而不是策略」
-
 ##### 这带来了什么
 在抛开面向对象后,数据和逻辑分离了,逻辑和逻辑分离了,甚至数据和其他数据分离了,只有逻辑依附在数据上.(当然这种情况有点太夸张了)
 
-所以在数据驱动编程中,一切都是暴露出来的.而控制流和状态的暴露将带来巨大的灵活性.
+所以在数据驱动编程中,一切都是暴露出来的.而控制流和状态的暴露将带来巨大的灵活性.(在[为什么使用EST](#为什么使用EST)展示)
 
 ##### 这和EST有什么关系
-EST 是数据驱动编程的一个实践.
+EST 是一个抽象状态机, 是数据驱动编程的一个实践.
+
+
+***
+### 如何使用EST
 
 ##### EST怎么组成
 EST 的全称为 Entity State Transition 
@@ -77,12 +81,15 @@ EST 的全称为 Entity State Transition
 
 从宏观上讲,EST把整个世界抽象成了状态机,由 State (状态)和 Transition (转移)来驱动.
 ***
-### 如何使用EST
-EST主要分为两个部分
+
+EST的接口主要分为两个部分,其实现分别在
 * [EntityState](/EST/EntityState.h)
 * [Transition](/EST/Transition.h)  
 
+***
 ### EntityState 
+
+EntityState 提供实体和状态的高效管理
 
 **如何定义 State?** 非常简单
 ```C++
@@ -138,7 +145,7 @@ manager.create_entity([&manager](auto& e) //创建一个实体
 * 创建 Entity
 * 杀死 Entity  
 
-需要注意的是**杀死和创建Entity不会立即生效!**要使得他们生效,你需要  
+需要注意的是**杀死和创建Entity不会立即生效!** 要使得他们生效,你需要(关于这个设计还有待商议)  
 ```C++
 manager.tick(); //进入下一帧,使得所有修改生效
 ```
@@ -178,10 +185,9 @@ manager.transit(whos_in);
 ```C++
 manager.transit<boy>([](name& n) { std::cout << n << " is a boy;\n"; }); //额外指定标签
 ```
-
+***
 ### Transition 
-
-Transition 模块对零散的转移函数进行整理  
+Transition 模块对零散的转移函数进行高效的管理  
 **有什么不同?**  
 你需要定义状态转移函数的输入(通过参数类型隐式的)和输出(通过返回类型显式的)
 ```C++
@@ -199,7 +205,7 @@ MPL::typelist<Ts...> output{};
 #define out(...) return output<__VA_ARGS__>
 ```
 
-**如何使用?**
+**如何构建?**
 ```C++
 using Game = EntityState::StateManager<CVelocity, CLocation, CAppearance, CLifeTime, CSpawner>;
 Game game;
@@ -211,19 +217,168 @@ Transition::Function<Game> transition;
 定义世界的转移函数
 然后构建管线,制定逻辑的顺序
 ```C++
-transition >> draw_frame >> dependent.life_time() >> move_input >> move_entity >> dependent.spawn() >> draw_entity;
+transition >> draw_frame;
 ```
 也可以用 combine 函数
 ```C++
 transition.combine(draw_frame);
 ```
 
-**使用很简单**
+**如何使用?**
 ```C++
 transition(game);
 ```
 
+***
 ### 简单的示例
-这个实例中,一条在控制台移动的蛇,其'蛇形'其实是残影构成的
-说明TODO
+这个实例是一个极简的游戏,玩家控制一条在控制台移动的蛇;
+
+首先我们实现显示的逻辑,即在屏幕上 entity 对应的位置打印出其对应的字符
+```C++
+struct CAppearance { char v; }; //显示的字符
+struct CLocation { int x, y; };
+auto draw_entity = [](CLocation& loc, CAppearance& ap) { renderer.draw(loc.x, loc.y, ap.v); }; 
+```
+同样不要再简单  
+接下来实现 entity 的移动,根据速度移动位置即可(还要防止跑出屏幕)
+```C++
+struct CVelocity { int x, y; }; 
+auto move_entity = [](CLocation& loc, CVelocity& vel)
+{
+	loc.x = clamp(loc.x + vel.x, 48); 
+	loc.y = clamp(loc.y + vel.y, 28);
+	out(CLocation);
+};
+```
+简直就是口头叙述的直接翻译!(注意这个函数有输出状态了)  
+接下来让它根据玩家的操作动起来,通过wasd来改变方向,且不能掉头,只能转向
+```C++
+auto move_input = [](CVelocity& vel) { 
+	CVelocity newVel = vel;
+	for_inputs([&newVel](char in)
+	{
+		switch (in)
+		{
+		case 'a': newVel = { -1, 0 }; break;
+		case 'd': newVel = { 1, 0 }; break;
+		case 'w': newVel = { 0, -1 }; break;
+		case 's': newVel = { 0, 1 }; break;
+		}
+	});
+	if ((vel.x * newVel.x + vel.y * newVel.y) == 0) vel = newVel; //只能转向
+	out(CVelocity);
+};
+```
+emmm,硬要说难度的话就只有点乘判断垂直了(逃  
+**这时我们的蛇还只有头没有身体,来加上身体,这里的实现思路比较有意思了,我们不把蛇身当做'蛇身',而是当做残影形成的拖尾,残影持续的时间越长,蛇就越长.**  
+首先实现残影的消散,这里注意了,残影消散意味着要杀掉一个实体,而杀掉一个实体需要调用StateManager提供的接口,但是我们并不想依赖于固定的StateManager实例,这里使用模板技巧来倒置依赖
+```C++
+template<typename Game>
+struct Dependent 
+{
+	using Entity = typename Game::Entity;
+	Game& game;
+	Dependent(Game& game) :game(game) {}
+	...
+};
+```
+然后在这里实现残影的消散, 即倒计时到零的时候杀死实体
+```C++
+struct CLifeTime { int n; }; //计时死亡
+struct Dependent 
+{
+    ...
+    auto life_time() //貌似没办法写成变量
+	{
+		return [this](CLifeTime& life, Entity& e)
+		{
+			if (--life.n < 0) game.kill_entity(e);
+			out(CLifeTime);
+		};
+	}
+    ...
+};
+```
+需要注意的只有定义输出状态  
+最后一个逻辑是生成残影,残影需要三个状态,位置,样子,持续时间
+```C++
+struct CSpawner { int life; };
+struct Dependent 
+{
+    ...
+    auto spawn()
+	{
+		return [this](CSpawner& sp, CLocation& loc)
+		{
+			game.create_entity([&](Entity& e)
+			{
+				game.add<CLifeTime>(e, sp.life);
+				game.add<CLocation>(e, loc.x, loc.y);
+				game.add<CAppearance>(e, '*');
+			});
+			out(CLifeTime, CLocation, CAppearance);
+		};
+	}
+    ...
+};
+```
+同样,需要注意的只有定义输出状态  
+至此,所有的逻辑都已经实现完成了,是时候构建世界让他们运作起来了  
+第一步,构建世界并放置一个"蛇头"
+```C++
+using Game = EntityState::StateManager<CVelocity, CLocation, CAppearance, CLifeTime, CSpawner>;
+Game game;
+game.create_entity([&game](auto& e) //初始化世界
+{
+	game.add<CVelocity>(e, 0, 0);
+	game.add<CLocation>(e, 15, 8);
+	game.add<CAppearance>(e, 'o');
+	game.add<CSpawner>(e, 5);
+});
+```
+第二步,拼接组建我们的逻辑  
+需要注意的是生成残影要移动之后,因为生成实体会滞后一帧(Tick),所以当实体生效的时候,蛇已经又前进了一格了.
+```C++
+Transition::Function<Game> transition;
+Dependent<Game> dependent{ game };
+//构建管线
+transition >> dependent.life_time() >> move_input >> move_entity >> dependent.spawn() >> draw_entity;
+```
+最后直接循环跑起来就皆大欢喜了
+```C++
+while (1) //帧循环
+{
+	std::this_thread::sleep_for(std::chrono::milliseconds{ 1000 / 20 });
+	transition(game);
+	renderer.swapchain();
+}
+```
+完整代码见
 [SnakeExample](/EST/SnakeExample.h)
+
+***
+### 为什么使用EST
+
+从上面的例子中来说
+* 对于逻辑
+    * 有些逻辑是**纯函数**,这意味着它可以**方便的进行独立测试**.
+        * 比如 assertEq(move_entity({0, 0}, {1, 1}) == {1, 1})
+    * 所有逻辑都是分开写的,它们互相不知道其他的逻辑,只有我们在最后组合的时候才会考虑它们之间的关系,这意味着**方便的多人协作**.
+    * 既然组合逻辑那么容易,那么改变组合也很容易,我们可以在**任何时刻(甚至运行时)拆卸**,安装或者重新排列逻辑.
+        * 比如 transition >> dependent.life_time() >> move_input >> dependent.spawn() >> draw_entity; (去掉了 move_entity)  
+    那么就不能移动了
+        * 比如去掉 dependent.life_time(), 那么残影就不会消失了,蛇变成了无限长.
+        * 比如添加一个 change_look 逻辑,就可以每帧改变蛇头的样子.
+    * 逻辑对于状态的读写是透明的,这意味着**无锁的自动并行化**
+* 对于实体与状态
+    * 所有状态都是简单数据,**序列化很轻松**
+    * 在实现上,状态都是放在连续内存里的,这意味着 **CPU Cache 友好**
+    * 实体由描述它的状态来定义,而逻辑又依附于状态上,那么结果就是,实体的行为由依附的状态来定义,这意味着**实体的行为由描述它的状态的状态来定义** (数据驱动的神威)
+    * 状态能够定义实体的行为,也意味着策划的表格也能轻易定义出行为(逃
+        * 如加上 CSpawner 就能拥有残影
+        * 如加上 CLocation 和 CVelocity 就可以根据输入移动(这里获得了两个行为)
+    * 而实体的类型又是动态的,这意味着我们可以 **随时改变一个对象的行为**
+        * 如加上一个 CBleed 持续掉血
+
+从上面可以看出来EST有着难以想象的灵活性与高性能  
+**你若倒戈卸甲,以礼来降,仍不失封侯之位,国安民乐,岂不美哉?**
