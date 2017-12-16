@@ -87,10 +87,9 @@ namespace Example
 
 	static Renderer renderer{ 28, 48 };
 	//虽然将状态向外输出,但内部状态不被影响(信息守恒),也算是纯函数
-	auto draw_entity = [](CLocation& loc, CAppearance& ap) { renderer.draw(loc.x, loc.y, ap.v); }; 
-	auto draw_frame = [] { renderer.swapchain(); };
+	auto draw_entity = [](CLocation& loc, CAppearance& ap) { renderer.draw(loc.x, loc.y, ap.v); };
 	//非纯函数,从外部读取状态(信息不守恒),需要特殊注意
-	auto move_input = [](CVelocity& vel) { 
+	auto move_input = [](CVelocity& vel) {
 		CVelocity newVel = vel;
 		for_inputs([&newVel](char in)
 		{
@@ -107,14 +106,14 @@ namespace Example
 	};
 	auto move_entity = [](CLocation& loc, CVelocity& vel)
 	{
-		loc.x = clamp(loc.x + vel.x, 48); 
+		loc.x = clamp(loc.x + vel.x, 48);
 		loc.y = clamp(loc.y + vel.y, 28);
 		out(CLocation);
 	};
 	//当涉及到实体的时候,会对Game产生依赖
 	//利用这个模板技巧可以倒置依赖
 	template<typename Game>
-	struct Dependent 
+	struct Dependent
 	{
 		using Entity = typename Game::Entity;
 		Game& game;
@@ -153,15 +152,16 @@ namespace Example
 			game.add<CAppearance>(e, 'o');
 			game.add<CSpawner>(e, 5);
 		});
-		
+
 		Transition::Function<Game> transition;
 		Dependent<Game> dependent{ game };
 		//构建管线
-		transition >> draw_frame >> dependent.life_time() >> move_input >> move_entity >> dependent.spawn() >> draw_entity;
+		transition >> dependent.life_time() >> move_entity >> move_input >> dependent.spawn() >> draw_entity;
 		while (1) //帧循环
 		{
 			std::this_thread::sleep_for(std::chrono::milliseconds{ 1000 / 20 });
 			transition(game);
+			renderer.swapchain();
 		}
 	}
 #undef out
