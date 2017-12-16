@@ -284,6 +284,20 @@ namespace EntityState
 			}
 		}
 
+		template<typename T>
+		struct decay_and_unwrap
+		{
+			property wrapped = false;
+			using type = std::decay_t<T>;
+		};
+		template<typename T>
+		struct decay_and_unwrap<MPL::type_t<T>>
+		{
+			property wrapped = true;
+			using type = T;
+		};
+		template<typename T>
+		using decay_and_unwrap_t = typename decay_and_unwrap<T>::type;
 
 		//辅助类,用来给函数填充参数
 		template<typename... Ts>
@@ -296,6 +310,8 @@ namespace EntityState
 					return e;
 				else if constexpr(Trait::template is_global_state<std::decay_t<T>>::value)
 					return manager.ref<std::decay_t<T>>();
+				else if constexpr(decay_and_unwrap<T>::wrapped)
+					return T{};
 				else	return manager.ref<std::decay_t<T>>(e); 
 			}
 
@@ -323,6 +339,8 @@ namespace EntityState
 			}
 		};
 
+		
+
 		//提取状态转移函数的信息
 		template<typename F, typename... Ts>
 		struct transition_trait
@@ -331,7 +349,7 @@ namespace EntityState
 			using ReturnType = typename FunctionTrait::return_type;
 			using ArgumentType = typename FunctionTrait::argument_type; //提取函数所需要的参数类型
 			//根据函数参数类型和模板参数一起计算出标记
-			using DecayArgument = MPL::map_t< std::decay_t, ArgumentType >; //先去掉引用
+			using DecayArgument = MPL::map_t< decay_and_unwrap_t, ArgumentType >; //先去掉引用
 			using ArgumentStates = MPL::intersection_t<DecayArgument, typename Trait::AllStates>;
 			using ArgumentSign = MPL::intersection_t<DecayArgument, typename Trait::Signs>; //去掉Entity&
 			using Signs = MPL::union_t<MPL::typelist<Ts...>, ArgumentSign>; //然后和模板参数做个并集得到标记列表

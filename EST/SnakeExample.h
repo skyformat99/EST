@@ -90,7 +90,7 @@ namespace Example
 	auto draw_entity = [](CLocation& loc, CAppearance& ap) { renderer.draw(loc.x, loc.y, ap.v); }; 
 	auto draw_frame = [] { renderer.swapchain(); };
 	//非纯函数,从外部读取状态(信息不守恒),需要特殊注意
-	auto move_input= [](CVelocity& vel) { 
+	auto move_input = [](CVelocity& vel) { 
 		CVelocity newVel = vel;
 		for_inputs([&newVel](char in)
 		{
