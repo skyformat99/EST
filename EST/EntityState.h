@@ -27,7 +27,7 @@ namespace EntityState
 		using data_type = std::array<Elem, words>;
 		data_type data;
 		template<size_t pos, bool val>
-		void set()
+		void draw()
 		{
 			if constexpr (val) data[pos / wordbits] |= (Elem)1 << pos % wordbits;
 			else data[pos / wordbits] &= ~((Elem)1 << pos % wordbits);
@@ -153,7 +153,7 @@ namespace EntityState
 			inline void add(const size_t n) noexcept
 			{
 				property index { MPL::index<T, Types>{} };
-				ref[index] = n; cap.template set<index, true>();
+				ref[index] = n; cap.template draw<index, true>();
 			}
 
 			template<typename T>
@@ -468,7 +468,7 @@ namespace EntityState
 		inline void add(Entity& e, Ts&&... args) noexcept
 		{
 			auto pre = e.bits;
-			e.bits.template set<Trait::template sign_index<T>(), true>();
+			e.bits.template draw<Trait::template sign_index<T>(), true>();
 			regroup(e, pre);
 			add_state_helper<T, Trait::template is_state<T>::value>{}(*this, e, std::forward<Ts>(args)...); //gtmd M$VC √ª∑®”√ constexpr if
 		}
@@ -490,7 +490,7 @@ namespace EntityState
 		inline static void erase(Entity& e) noexcept 
 		{ 
 			auto pre = e.bits;
-			e.bits.set<Trait::sign_index<T>(), false>(); 
+			e.bits.draw<Trait::sign_index<T>(), false>(); 
 			regroup(e, pre);
 		}
 
