@@ -151,10 +151,10 @@ manager.tick(); //进入下一帧,使得所有修改生效
 ```
 
 
-**那么世界构建好了,我们要如何用逻辑去和它交互呢?**  使用状态转移函数
+**那么世界构建好了,我们要如何用逻辑去和它交互呢?**  使用逻辑函数
 
-**如何定义转移函数?** 非常简单  
-任何函数,伪函数
+**如何定义这个逻辑函数?** 非常简单  
+任何函数,伪函数,参数要求是**任何状态或Entity&**
 
 ```C++
 auto whos_in = [](name& n, position& pos, room& r) 
@@ -163,25 +163,26 @@ auto whos_in = [](name& n, position& pos, room& r)
 };
 ```
 
-**转移函数如何匹配状态?**  使用模式匹配  
+**逻辑函数如何匹配实体?**  使用模式匹配    
 观察whos_in的声明  
 whos_in (name, position, room)  
-其中room是一个 GlobalState,会直接匹配到 GlobalState  
-那么剩下  
-whos_in (name, position)  
-进行模式匹配,假设有两个Entity
+其中room是一个 GlobalState,会直接匹配到 game.room  
+剩下的whos_in (name, position) 
+对所有实体进行模式匹配,假设有三个Entity
 
 * E(name, position)
 * D(name)
 * F(name, someelse, position)
 
 则 whos_in 会和 E, F 匹配上,而不会和 D 匹配上
+在匹配上后,参数将会被对应的状态填补,**特别的,Entity& 参数会取得 Entity 本身的引用**   
+如whos_in (name, position, room, Entity&) 的 Entity& 会分别匹配为 E 和 F
 
-**如何应用转移函数?** 非常简单  
+**如何应用逻辑函数?** 非常简单
 ```C++
 manager.transit(whos_in);
 ```
-可以在转移函数指定 Tag
+可以在应用的时候指定 Tag
 ```C++
 manager.transit<boy>([](name& n) { std::cout << n << " is a boy;\n"; }); //额外指定标签
 manager.transit([](name& n, MPL::type_t<girl>) { std::cout << n << " is a girl;\n"; }); //也可以这么指定,但是不推荐
@@ -190,14 +191,15 @@ manager.transit([](name& n, MPL::type_t<girl>) { std::cout << n << " is a girl;\
 ### Transition 
 Transition 模块对零散的转移函数进行高效的管理  
 
-**首先需要注意**  
-你需要定义状态转移函数的输入(通过参数类型隐式的)和输出(通过返回类型显式的)
+**首先需要注意状态转移函数**  
+状态转移函数是特殊的逻辑函数  
+你需要定义状态转移函数的输入(通过参数类型隐式的)**和输出(通过返回类型显式的)**  
 ```C++
 auto move_entity = [](CLocation& loc, CVelocity& vel)
 {
 	loc.x = clamp(loc.x + vel.x, 48); 
 	loc.y = clamp(loc.y + vel.y, 28);
-	out(CLocation);
+	out(CLocation); //输出新的位置
 };
 ```
 其中out的定义为
@@ -206,28 +208,24 @@ template<typename... Ts>
 MPL::typelist<Ts...> output{};
 #define out(...) return output<__VA_ARGS__>
 ```
-**如何构建一个转移?**
+**什么是世界转移函数?**  
+世界转移函数能够转移整个世界的状态来推进到新的世界  
+世界转移函数由基本的状态转移函数组合而成
 ```C++
-using Game = EntityState::StateManager<CVelocity, CLocation, CAppearance, CLifeTime, CSpawner>;
-Game game;
+transition(game);
 ```
-在构建了世界后
+**如何构建一个世界转移函数?**
+首先定义世界的转移函数
 ```C++
 Transition::Function<Game> transition;
 ```
-定义世界的转移函数
-然后构建管线,制定逻辑的顺序
+然后构建管线,组合状态转移函数
 ```C++
-transition >> draw_frame >> ...;
+transition >> move_entity >> ...;
 ```
-也可以用 combine 函数
+也可以用 combine 接口来组合
 ```C++
-transition.combine(draw_frame).combine<...>(...)...;
-```
-
-**如何使用?**
-```C++
-transition(game);
+transition.combine(move_entity).combine<...>(...)...;
 ```
 
 ***
@@ -272,7 +270,7 @@ auto move_input = [](CVelocity& vel) {
 ```
 emmm,硬要说难度的话就只有点乘判断垂直了(逃  
 **这时我们的蛇还只有头没有身体,来加上身体,这里的实现思路比较有意思了,我们不把蛇身当做'蛇身',而是当做残影形成的拖尾,残影持续的时间越长,蛇就越长.**  
-首先实现残影的消散,这里注意了,残影消散意味着要杀掉一个实体,而杀掉一个实体需要调用StateManager提供的接口,但是我们并不想依赖于固定的StateManager实例,这里使用模板技巧来倒置依赖
+首先实现残影的消散,这里注意了,残影消散意味着要杀掉一个实体,而杀掉一个实体需要调用StateManager提供的接口,但是我们并不想依赖于固定的StateManager实例,于是这里使用模板技巧来倒置依赖
 ```C++
 template<typename Game>
 struct Dependent 
@@ -338,7 +336,7 @@ game.create_entity([&game](auto& e) //初始化世界
 });
 ```
 第二步,拼接组建我们的逻辑  
-需要注意的是生成残影要移动之后,因为生成实体会滞后一帧(Tick),所以当实体生效的时候,蛇已经又前进了一格了.
+需要注意的是生成残影要移动之后(在蛇的位置生成),因为生成实体会滞后一帧(Tick),所以当实体生效的时候,蛇已经又前进了一格了.
 ```C++
 Transition::Function<Game> transition;
 Dependent<Game> dependent{ game };
@@ -361,9 +359,11 @@ while (1) //帧循环
 ### 为什么使用EST
 
 从上面的例子中来说
-* 对于逻辑
-    * 有些逻辑是**纯函数**,这意味着它可以**方便的进行独立测试**.
+* 对于逻辑(转移)
+    * 很多逻辑是**纯函数**,这意味着它可以**方便的进行独立测试**.
         * 比如 assertEq(move_entity({0, 0}, {1, 1}) == {1, 1})
+	    * 如 spawn 函数,也能造一个假的 game 来进行测试
+	    * 如 input 函数,也容易造一个假的输入在进行测试
     * 所有逻辑都是分开写的,它们互相不知道其他的逻辑,只有我们在最后组合的时候才会考虑它们之间的关系,这意味着**方便的多人协作**.
     * 既然组合逻辑那么容易,那么改变组合也很容易,我们可以在**任何时刻(甚至运行时)拆卸**,安装或者重新排列逻辑.
         * 比如 transition >> dependent.life_time() >> move_input >> dependent.spawn() >> draw_entity; (去掉了 move_entity)  
@@ -384,10 +384,10 @@ while (1) //帧循环
         * 如加上一个 CLifeTime 自动消失
 
 从上面可以看出来EST有着难以想象的灵活性与高性能  
-**你若倒戈卸甲,以礼来降,仍不失封侯之位,国安民乐,岂不美哉?**
-**最后祝你.身体健康**
+**你若倒戈卸甲,以礼来降,仍不失封侯之位,国安民乐,岂不美哉?**  
+**最后祝你.身体健康.**
 
 ### TODO
 * 考虑是否应该延后 Entity 的销毁和创建
-    * 考虑时候应该一起延后创建 Entity 初始化时创建的 State
+    * 考虑时候应该一起延后创建 Entity 初始化时创建的 State
 * 考虑是否应该延后 Component 的销毁和创建
