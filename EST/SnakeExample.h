@@ -130,12 +130,10 @@ namespace Example
 		{
 			return [this](CSpawner& sp, CLocation& loc)
 			{
-				game.create_entity([&](Entity& e)
-				{
-					game.add<CLifeTime>(e, sp.life);
-					game.add<CLocation>(e, loc.x, loc.y);
-					game.add<CAppearance>(e, '*');
-				});
+				auto& e = game.create_entity();
+				game.add<CLifeTime>(e, sp.life);
+				game.add<CLocation>(e, loc.x, loc.y);
+				game.add<CAppearance>(e, '*');
 				out(CLifeTime, CLocation, CAppearance);
 			};
 		}
@@ -145,21 +143,20 @@ namespace Example
 	{
 		using Game = EntityState::StateManager<CVelocity, CLocation, CAppearance, CLifeTime, CSpawner>;
 		Game game;
-		game.create_entity([&game](auto& e) //初始化世界
-		{
-			game.add<CVelocity>(e, 0, 0);
-			game.add<CLocation>(e, 15, 8);
-			game.add<CAppearance>(e, 'o');
-			game.add<CSpawner>(e, 5);
-		});
+		auto& e = game.create_entity(); //初始化世界
+		game.add<CVelocity>(e, 1, 0);
+		game.add<CLocation>(e, 15, 8);
+		game.add<CAppearance>(e, 'o');
+		game.add<CSpawner>(e, 5);
+		
 
 		Transition::Function<Game> transition;
 		Dependent<Game> dependent{ game };
 		//构建管线
-		transition >> dependent.life_time() >> move_entity >> move_input >> dependent.spawn() >> draw_entity;
+		transition >> dependent.spawn() >> dependent.life_time() >> move_input >> move_entity >> draw_entity;
 		while (1) //帧循环
 		{
-			std::this_thread::sleep_for(std::chrono::milliseconds{ 1000 / 20 });
+			std::this_thread::sleep_for(std::chrono::milliseconds{ 1000 / 2 });
 			transition(game);
 			renderer.swapchain();
 		}

@@ -216,8 +216,6 @@ namespace EntityState
 		typename Trait::StateStornge states; //存放所有状态数据
 		std::vector<Entity> entities; //所有的实体数据
 		size_t size = 0; //数量
-		std::vector<Entity> delayed; //延迟的创建
-		std::mutex delayed_mtx;
 		//单例,根据暴雪的实践,40%的组件为单例
 		MPL::rewrap_t<std::tuple, typename Trait::GlobalStates> globals;
 		//因为Entity会因为辣鸡清扫变更位置,所以需要
@@ -423,33 +421,21 @@ namespace EntityState
 			grow_to(newCapacity);
 		}
 
-		//新建一个实体,这里并不会改动size
-		//我们把创建延后到下一帧生效
-		//创建过程可能会引起delayed扩容,必须全程加锁,不能直接返回实体
-		template<typename F>
-		void create_entity(F&& f) noexcept
+		//新建一个实体
+		//创建过程可能会引起entities扩容
+		Entity& create_entity() noexcept
 		{
-			std::unique_lock<std::mutex> ulk(delayed_mtx);
-			delayed.emplace_back(Entity{});
-			auto& e = delayed.back();
-			e.bits.reset(); 
-			e.alive = true; 
-			//延迟创建的不管句柄
-			std::forward<F>(f)(e);
-		}
-
-		//重生实体(此时已经是新的实体了)
-		inline void refresh_entity(Entity& e)
-		{
-			e.bits.reset(); //清空数据,不必真正的去清除,只需要清除bits
+			grow();
+			auto& e{ entities[size++] };
 			e.alive = true; //标记存活
 			++handles[e.handleIndex].valid; //为每个实体分配唯一标号
+			return e;
 		}
 
 		inline void kill_entity(Entity& e) const noexcept
 		{
 			e.alive = false;
-			e.bits.reset();
+			
 		}
 
 		//注意创建是被延时了的,本帧内创建或杀死的实体并没有真正的生效,所以不能用alive
@@ -478,6 +464,7 @@ namespace EntityState
 			{
 				if (!e.compRef.template caped<T>()) //为状态惰性分配
 					e.compRef.template add<T>(manager.states.template add<T>(std::forward<Ts>(args)...));
+				else manager.template ref<T>(e) = { std::forward<Ts>(args)... };
 			}
 		};
 
@@ -544,22 +531,13 @@ namespace EntityState
 		void tick() 
 		{ 
 			size_t iD{ 0 }, iA{ size - 1 };
-			if (size == 0u) goto complete;
+			size_t oldSize = size;
+			if (size == 0u) return;
 			//把所有"存活"的实体收集起来,进行一次辣鸡收集
 			while (true) {
 				for (; true; ++iD) { //从前往后找到一个死亡的实体
 					if (iD > iA) goto complete; //跳出两层循环用了goto
-					if (!entities[iD].alive) //找到一个死亡的实体
-					{
-						if (!delayed.empty()) //直接在尸体上重生
-						{
-							auto& eD = entities[iD];
-							eD = std::move(delayed.back());
-							delayed.pop_back();
-							++handles[eD.handleIndex].valid;
-						}
-						else break; //否则用一个存活的实体来填补空穴
-					}
+					if (!entities[iD].alive) break;//找到一个死亡的实体
 				}
 
 				for (; true; --iA) { //从后往前找到一个存活的实体,以填补空穴
@@ -577,18 +555,14 @@ namespace EntityState
 			}
 		complete:
 			size = iD;
-			while (!delayed.empty()) //新建实体
+			//把死亡了的实体从分组剔除
+			for (size_t i{ size }; i < oldSize; ++i) 
 			{
-				grow();
-				auto free{ size++ };
-				auto& e{ entities[free] };
-				e = std::move(delayed.back());
-				delayed.pop_back();
-				++handles[e.handleIndex].valid;
+				auto& e = entities[i];
+				auto pre = e.bits;
+				e.bits.reset();
+				regroup(e, pre);
 			}
-
-			//没有必要保留这些内存
-			delayed.shrink_to_fit();
 		}
 	};
 }
