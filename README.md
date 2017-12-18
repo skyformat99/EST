@@ -16,7 +16,7 @@ EST 框架全称 Entity State Transition ,是一个基于 ECS 模型的 C++17 �
     * [Transition](#Transition)
 * [为什么使用EST](#为什么使用EST)
 * [简单的示例](#简单示例)
-* [TODO](#TODO)
+* [关于自动并行](#关于自动并行)
 ***
 ### 前置需求
 * M$VC
@@ -132,20 +132,21 @@ World manager;
 ```
 然后,我们可以开始在这个世界里面'造人'了
 ```C++
-manager.create_entity([&manager](auto& e) //创建一个实体
-{
-	manager.add<name>(e, "Jack"); //添加状态,带构造参数
-	manager.add<position>(e, 1.f, 1.f);
-	manager.add<boy>(e); //添加标签
-}); 
+auto& e = manager.create_entity() //创建一个实体
+manager.add<name>(e, "Jack"); //添加状态,带构造参数
+manager.add<position>(e, 1.f, 1.f);
+manager.add<boy>(e); //添加标签
 ```
+**注意!** 请不要保存 Entity 的引用,这是一个临时的位置
+
+    如果有需要,应该使用manager.get_handle和manager.get_entity来安全的存取 Entity 的引用   
 对 Entity 可进行的的操作一共有
 * 添加 State 或 Flag
 * 删除 State 或 Flag
 * 创建 Entity
 * 杀死 Entity  
 
-需要注意的是**杀死和创建Entity不会立即生效!** 要使得他们生效,你需要  
+需要注意的是**杀死Entity不会立即生效!** 要使得他们被清理,你需要  
 ```C++
 manager.tick(); //进入下一帧,使得所有修改生效
 ```
@@ -154,7 +155,7 @@ manager.tick(); //进入下一帧,使得所有修改生效
 **那么世界构建好了,我们要如何用逻辑去和它交互呢?**  使用逻辑函数
 
 **如何定义这个逻辑函数?** 非常简单  
-任何函数,伪函数,参数要求是**任何状态或Entity&**
+任何函数,伪函数,参数要求是**任何状态或Entity**
 
 ```C++
 auto whos_in = [](name& n, position& pos, room& r) 
@@ -175,7 +176,7 @@ whos_in (name, position, room)
 * F(name, someelse, position)
 
 则 whos_in 会和 E, F 匹配上,而不会和 D 匹配上
-在匹配上后,参数将会被对应的状态填补,**特别的,Entity& 参数会取得 Entity 本身的引用**   
+在匹配上后,参数将会被对应的状态填补,**特别的,Entity 参数会取得 Entity 本身**   
 如whos_in (name, position, room, Entity&) 的 Entity& 会分别匹配为 E 和 F
 
 **如何应用逻辑函数?** 非常简单
@@ -193,14 +194,27 @@ Transition 模块对零散的转移函数进行高效的管理
 
 **首先需要注意状态转移函数**  
 状态转移函数是特殊的逻辑函数  
-你需要定义状态转移函数的输入(通过参数类型隐式的)**和输出(通过返回类型显式的)**  
+你需要定义状态转移函数的输入(const)和输出(mutable--即默认状态)  
 ```C++
-auto move_entity = [](CLocation& loc, CVelocity& vel)
+auto move_entity = [](CLocation& loc, const CVelocity& vel)
 {
 	loc.x = clamp(loc.x + vel.x, 48); 
 	loc.y = clamp(loc.y + vel.y, 28);
-	out(CLocation); //输出新的位置
 };
+```
+特别的,当你需要**创建**状态或者实体的时候,你需要在返回处声明
+```C++
+auto spawn()
+{
+	return [this](const CSpawner& sp,const CLocation& loc)
+	{
+		auto& e = game.create_entity();
+		game.add<CLifeTime>(e, sp.life);
+		game.add<CLocation>(e, loc.x, loc.y);
+		game.add<CAppearance>(e, '*');
+		out(Entity);
+	};
+}
 ```
 其中out的定义为
 ```C++
@@ -236,17 +250,16 @@ transition.combine(move_entity).combine<...>(...)...;
 ```C++
 struct CAppearance { char v; }; //显示的字符
 struct CLocation { int x, y; };
-auto draw_entity = [](CLocation& loc, CAppearance& ap) { renderer.draw(loc.x, loc.y, ap.v); }; 
+auto draw_entity = [](const CLocation& loc, const CAppearance& ap) { renderer.draw(loc.x, loc.y, ap.v); }; 
 ```
 同样不要再简单  
 接下来实现 entity 的移动,根据速度移动位置即可(还要防止跑出屏幕)
 ```C++
 struct CVelocity { int x, y; }; 
-auto move_entity = [](CLocation& loc, CVelocity& vel)
+auto move_entity = [](CLocation& loc, const CVelocity& vel)
 {
 	loc.x = clamp(loc.x + vel.x, 48); 
 	loc.y = clamp(loc.y + vel.y, 28);
-	out(CLocation);
 };
 ```
 简直就是口头叙述的直接翻译!(注意这个函数有输出状态了)  
@@ -265,7 +278,6 @@ auto move_input = [](CVelocity& vel) {
 		}
 	});
 	if ((vel.x * newVel.x + vel.y * newVel.y) == 0) vel = newVel; //只能转向
-	out(CVelocity);
 };
 ```
 emmm,硬要说难度的话就只有点乘判断垂直了(逃  
@@ -292,13 +304,12 @@ struct Dependent
     	return [this](CLifeTime& life, Entity& e)
     	{
     	    if (--life.n < 0) game.kill_entity(e);
-            out(CLifeTime);
         };
     }
     ...
 };
 ```
-需要注意的只有定义输出状态  
+easy  
 最后一个逻辑是生成残影,残影需要三个状态,位置,样子,持续时间
 ```C++
 struct CSpawner { int life; };
@@ -309,41 +320,38 @@ struct Dependent
     {
 	    return [this](CSpawner& sp, CLocation& loc)
 	    {
-	    	game.create_entity([&](Entity& e)
-	    	{
-	    		game.add<CLifeTime>(e, sp.life);
-	    		game.add<CLocation>(e, loc.x, loc.y);
-	    		game.add<CAppearance>(e, '*');
-	    	});
-	    	out(CLifeTime, CLocation, CAppearance);
+	    	auto& e = game.create_entity();
+	    	game.add<CLifeTime>(e, sp.life);
+	    	game.add<CLocation>(e, loc.x, loc.y);
+	    	game.add<CAppearance>(e, '*');
+	    	out(Entity);
 	    };
     }
     ...
 };
 ```
-同样,需要注意的只有定义输出状态  
+**记得声明实体的创建**  
+还有一点需要注意的是,残影会持续 lifetime+1 帧,因为删除会延后一帧  
 至此,所有的逻辑都已经实现完成了,是时候构建世界让他们运作起来了  
-第一步,构建世界并放置一个"蛇头"
+第一步,构建世界并放置一个"蛇头",它可以根据输入移动(CVelocity,CLocation),它可以显示(CAppearance),它可以生成残影(CSpawner).
 ```C++
 using Game = EntityState::StateManager<CVelocity, CLocation, CAppearance, CLifeTime, CSpawner>;
 Game game;
-game.create_entity([&game](auto& e) //初始化世界
-{
-	game.add<CVelocity>(e, 0, 0);
-	game.add<CLocation>(e, 15, 8);
-	game.add<CAppearance>(e, 'o');
-	game.add<CSpawner>(e, 5);
-});
+auto& e = game.create_entity([&game](auto& e) //初始化世界
+game.add<CVelocity>(e, 0, 0);
+game.add<CLocation>(e, 15, 8);
+game.add<CAppearance>(e, 'o');
+game.add<CSpawner>(e, 5);
 ```
 第二步,拼接组建我们的逻辑  
-需要注意的是生成残影要移动之后(在蛇的位置生成),因为生成实体会滞后一帧(Tick),所以当实体生效的时候,蛇已经又前进了一格了.
+生成残影要在移动之前,残影消散要在生成残影之后,移动输入需要在移动之前,渲染需要在所有动作之后,嗯,一切都是如此清晰.
 ```C++
 Transition::Function<Game> transition;
 Dependent<Game> dependent{ game };
 //构建管线
-transition >> dependent.life_time() >> move_input >> move_entity >> dependent.spawn() >> draw_entity;
+transition >> dependent.spawn() >> dependent.life_time() >> move_input >> move_entity >> draw_entity;
 ```
-最后直接循环跑起来就皆大欢喜了
+最后, 直接循环跑起来就皆大欢喜了.
 ```C++
 while (1) //帧循环
 {
@@ -357,7 +365,6 @@ while (1) //帧循环
 
 ***
 ### 为什么使用EST
-
 从上面的例子中来说
 * 对于逻辑(转移)
     * 很多逻辑是**纯函数**,这意味着它可以**方便的进行独立测试**.
@@ -366,7 +373,7 @@ while (1) //帧循环
 	    * 如 input 函数,也容易造一个假的输入在进行测试
     * 所有逻辑都是分开写的,它们互相不知道其他的逻辑,只有我们在最后组合的时候才会考虑它们之间的关系,这意味着**方便的多人协作**.
     * 既然组合逻辑那么容易,那么改变组合也很容易,我们可以在**任何时刻(甚至运行时)拆卸**,安装或者重新排列逻辑.
-        * 比如 transition >> dependent.life_time() >> move_input >> dependent.spawn() >> draw_entity; (去掉了 move_entity)  
+        * 比如 transition >> dependent.spawn() >> dependent.life_time() >> move_input >> draw_entity; (去掉了 move_entity)  
     那么就不能移动了
         * 比如去掉 dependent.life_time(), 那么残影就不会消失了,蛇变成了无限长.
         * 比如添加一个 change_look 逻辑,就可以每帧改变蛇头的样子.
@@ -387,7 +394,9 @@ while (1) //帧循环
 **你若倒戈卸甲,以礼来降,仍不失封侯之位,国安民乐,岂不美哉?**  
 **最后祝你.身体健康.**
 
-### TODO
-* 考虑是否应该延后 Entity 的销毁和创建
-    * 考虑时候应该一起延后创建 Entity 初始化时创建的 State
-* 考虑是否应该延后 Component 的销毁和创建
+### 关于自动并行
+* 状态输入阻塞相同 State 输出,内部多线程
+* 状态输出阻塞相同 State 输入和输出,内部多线程
+* 实体创建相当于所有 State(**不包含GlobalState**) 输出,内部单线程
+* 状态创建相当于相同状态输出(导致重分配),内部单线程
+* 删除状态,杀死实体不阻塞
