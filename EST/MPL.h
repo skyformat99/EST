@@ -206,7 +206,8 @@ namespace MPL
 	template<typename T, typename F>
 	constexpr decltype(auto) for_types(F&& f)
 	{
-		return for_tuple(rewrap_t<std::tuple, map_t<type_t, T>>{}, f);
+		if constexpr(size<T>{} > 0u)
+			return for_tuple(rewrap_t<std::tuple, map_t<type_t, T>>{}, f);
 	}
 
 	

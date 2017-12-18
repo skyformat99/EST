@@ -184,17 +184,16 @@ namespace EntityState
 				return vec.size() - 1;
 			}
 		};
-	};
 
-	//实体
-	template<typename Trait>
-	struct Entity
-	{
-		typename Trait::Bitset bits; //可以认为是一种简单的反射能力
-		typename Trait::StateReference compRef; //状态数据索引
-		size_t handleIndex; //指向句柄,和句柄形成双向引用
-		bool alive = false; //是否存活,用于简易辣鸡回收机制
+		struct Entity
+		{
+			typename Bitset bits; //可以认为是一种简单的反射能力
+			typename StateReference compRef; //状态数据索引
+			size_t handleIndex; //指向句柄,和句柄形成双向引用
+			bool alive = false; //是否存活,用于简易辣鸡回收机制
+		};
 	};
+	
 
 	struct Handle //句柄
 	{
@@ -212,7 +211,7 @@ namespace EntityState
 	struct StateManager
 	{
 		using Trait = Trait<Ts...>;
-		using Entity = Entity<Trait>;
+		using Entity = typename Trait::Entity;
 		typename Trait::StateStornge states; //存放所有状态数据
 		std::vector<Entity> entities; //所有的实体数据
 		size_t size = 0; //数量

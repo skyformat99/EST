@@ -87,7 +87,7 @@ namespace Example
 
 	static Renderer renderer{ 28, 48 };
 	//虽然将状态向外输出,但内部状态不被影响(信息守恒),也算是纯函数
-	auto draw_entity = [](CLocation& loc, CAppearance& ap) { renderer.draw(loc.x, loc.y, ap.v); };
+	auto draw_entity = [](const CLocation& loc,const CAppearance& ap) { renderer.draw(loc.x, loc.y, ap.v); };
 	//非纯函数,从外部读取状态(信息不守恒),需要特殊注意
 	auto move_input = [](CVelocity& vel) {
 		CVelocity newVel = vel;
@@ -102,13 +102,11 @@ namespace Example
 			}
 		});
 		if ((vel.x * newVel.x + vel.y * newVel.y) == 0) vel = newVel; //只能转向
-		out(CVelocity);
 	};
-	auto move_entity = [](CLocation& loc, CVelocity& vel)
+	auto move_entity = [](CLocation& loc, const CVelocity& vel)
 	{
 		loc.x = clamp(loc.x + vel.x, 48);
 		loc.y = clamp(loc.y + vel.y, 28);
-		out(CLocation);
 	};
 	//当涉及到实体的时候,会对Game产生依赖
 	//利用这个模板技巧可以倒置依赖
@@ -128,13 +126,13 @@ namespace Example
 		}
 		auto spawn()
 		{
-			return [this](CSpawner& sp, CLocation& loc)
+			return [this](const CSpawner& sp,const CLocation& loc)
 			{
 				auto& e = game.create_entity();
 				game.add<CLifeTime>(e, sp.life);
 				game.add<CLocation>(e, loc.x, loc.y);
 				game.add<CAppearance>(e, '*');
-				out(CLifeTime, CLocation, CAppearance);
+				out(Entity);
 			};
 		}
 	};
@@ -149,7 +147,6 @@ namespace Example
 		game.add<CAppearance>(e, 'o');
 		game.add<CSpawner>(e, 5);
 		
-
 		Transition::Function<Game> transition;
 		Dependent<Game> dependent{ game };
 		//构建管线
