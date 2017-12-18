@@ -252,7 +252,7 @@ struct CAppearance { char v; }; //显示的字符
 struct CLocation { int x, y; };
 auto draw_entity = [](const CLocation& loc, const CAppearance& ap) { renderer.draw(loc.x, loc.y, ap.v); }; 
 ```
-同样不要再简单  
+easy  
 接下来实现 entity 的移动,根据速度移动位置即可(还要防止跑出屏幕)
 ```C++
 struct CVelocity { int x, y; }; 
@@ -262,7 +262,7 @@ auto move_entity = [](CLocation& loc, const CVelocity& vel)
 	loc.y = clamp(loc.y + vel.y, 28);
 };
 ```
-简直就是口头叙述的直接翻译!(注意这个函数有输出状态了)  
+简直就是口头叙述的直接翻译!  
 接下来让它根据玩家的操作动起来,通过wasd来改变方向,且不能掉头,只能转向
 ```C++
 auto move_input = [](CVelocity& vel) { 
@@ -281,8 +281,9 @@ auto move_input = [](CVelocity& vel) {
 };
 ```
 emmm,硬要说难度的话就只有点乘判断垂直了(逃  
-**这时我们的蛇还只有头没有身体,来加上身体,这里的实现思路比较有意思了,我们不把蛇身当做'蛇身',而是当做残影形成的拖尾,残影持续的时间越长,蛇就越长.**  
-首先实现残影的消散,这里注意了,残影消散意味着要杀掉一个实体,而杀掉一个实体需要调用StateManager提供的接口,但是我们并不想依赖于固定的StateManager实例,于是这里使用模板技巧来倒置依赖
+这时我们的蛇还只有头没有身体,来加上身体  
+**这里的实现思路比较有意思了,我们不把蛇身当做'蛇身',而是当做残影形成的拖尾,残影持续的时间越长,蛇就越长.**  
+那么首先实现残影的消散,这里注意了,残影消散意味着要杀掉一个实体,而杀掉一个实体需要调用StateManager提供的接口,但是我们并不想依赖于固定的StateManager实例,于是这里使用模板技巧来倒置依赖
 ```C++
 template<typename Game>
 struct Dependent 
